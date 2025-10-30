@@ -8,6 +8,7 @@ interface LottoResult {
   allStarBonus: number;
   winners: number;
   jackpot: string;
+  isLive?: boolean;
 }
 
 export default function Home() {
@@ -68,6 +69,9 @@ export default function Home() {
                 <p><strong>All Star Bonus:</strong> {result.allStarBonus}x</p>
                 <p><strong>Winners:</strong> {result.winners.toLocaleString()}</p>
                 <p><strong>Jackpot:</strong> {result.jackpot}</p>
+                <p className={result.isLive ? "data-source live" : "data-source fallback"}>
+                  {result.isLive ? "Live Data" : "Sample Data"}
+                </p>
               </div>
             </div>
           ))}
