@@ -11,35 +11,29 @@ interface LottoResult {
   isLive?: boolean;
 }
 
-export default function Home() {
-  const [results, setResults] = useState<LottoResult[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+export default function Home({ initialResults, generatedAt }: { initialResults: LottoResult[]; generatedAt: string }) {
+  const [results, setResults] = useState<LottoResult[]>(initialResults || []);
+  const [loading, setLoading] = useState<boolean>(initialResults?.length ? false : true);
   const [error, setError] = useState<string | null>(null);
 
+  // Optional client refresh only if initial props were empty
   useEffect(() => {
+    if (initialResults && initialResults.length > 0) return;
+    
     async function fetchResults() {
       try {
-        console.log('Fetching lottery results from API...');
-        // Use absolute URL with window.location.origin to ensure correct API path in all environments
+        console.log('Fetching lottery results from API (client refresh)...');
         const apiUrl = `${window.location.origin}/api/lotto`;
-        console.log('Using API URL:', apiUrl);
         const response = await fetch(apiUrl);
-        console.log('API response status:', response.status);
-        
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        
         const data = await response.json();
-        console.log('API response data:', data);
-        
         if (!data || !Array.isArray(data) || data.length === 0) {
-          console.error('API returned empty or invalid data');
           setError('No lottery results available. Please try again later.');
           setLoading(false);
           return;
         }
-        
         setResults(data);
         setLoading(false);
       } catch (err) {
@@ -50,7 +44,7 @@ export default function Home() {
     }
 
     fetchResults();
-  }, []);
+  }, [initialResults]);
 
   return (
     <div className="container">
@@ -65,6 +59,7 @@ export default function Home() {
         <img src="/logo.svg" alt="Lotto America Logo" />
         <h1>Lotto America Results</h1>
       </header>
+      <p style={{ fontSize: '12px', color: '#666' }}>Generated at: {new Date(generatedAt).toLocaleString()}</p>
 
       {loading && <div className="loading">Loading results...</div>}
       
@@ -95,4 +90,27 @@ export default function Home() {
       )}
     </div>
   );
+}
+
+export async function getStaticProps() {
+  const base = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+  try {
+    const res = await fetch(`${base}/api/lotto`);
+    const data = await res.json();
+    return {
+      props: {
+        initialResults: Array.isArray(data) ? data : [],
+        generatedAt: new Date().toISOString()
+      },
+      revalidate: 600 // Rebuild page every 10 minutes automatically
+    };
+  } catch (e) {
+    return {
+      props: {
+        initialResults: [],
+        generatedAt: new Date().toISOString()
+      },
+      revalidate: 600
+    };
+  }
 }
