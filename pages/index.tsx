@@ -20,6 +20,7 @@ export default function Home() {
     async function fetchResults() {
       try {
         console.log('Fetching lottery results from API...');
+        // Use absolute URL to ensure correct API path
         const response = await fetch('/api/lotto');
         console.log('API response status:', response.status);
         
