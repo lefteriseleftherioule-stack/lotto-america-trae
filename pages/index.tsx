@@ -19,17 +19,30 @@ export default function Home() {
   useEffect(() => {
     async function fetchResults() {
       try {
+        console.log('Fetching lottery results from API...');
         const response = await fetch('/api/lotto');
+        console.log('API response status:', response.status);
+        
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
+        
         const data = await response.json();
+        console.log('API response data:', data);
+        
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          console.error('API returned empty or invalid data');
+          setError('No lottery results available. Please try again later.');
+          setLoading(false);
+          return;
+        }
+        
         setResults(data);
         setLoading(false);
       } catch (err) {
+        console.error('Error fetching results:', err);
         setError('Failed to fetch lottery results. Please try again later.');
         setLoading(false);
-        console.error('Error fetching results:', err);
       }
     }
 
