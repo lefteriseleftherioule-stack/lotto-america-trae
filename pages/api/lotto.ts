@@ -232,8 +232,21 @@ let lastFetchTime = 0;
 const CACHE_DURATION = 3600000; // 1 hour in milliseconds
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Handle OPTIONS request for CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  
   if (req.method === 'GET') {
     try {
+      console.log('API endpoint called, processing request...');
+      
       const currentTime = Date.now();
       
       // Use cached results if they exist and are still fresh
@@ -254,11 +267,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       
       // Always return something - either scraped results or fallback data
-      res.status(200).json(results.length > 0 ? results : fallbackResults);
+      const responseData = results.length > 0 ? results : fallbackResults;
+      console.log(`Returning ${responseData.length} results, isLive: ${responseData[0]?.isLive}`);
+      res.status(200).json(responseData);
     } catch (error) {
       console.error('API error:', error);
       
       // Always return data, even if there's an error
+      console.log('Error occurred, returning fallback data');
       res.status(200).json(fallbackResults);
     }
   } else {
