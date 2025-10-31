@@ -102,7 +102,7 @@ export async function getStaticProps() {
         initialResults: Array.isArray(data) ? data : [],
         generatedAt: new Date().toISOString()
       },
-      revalidate: 600 // Rebuild page every 10 minutes automatically
+      revalidate: 7200 // Rebuild page every 2 hours automatically
     };
   } catch (e) {
     return {
@@ -110,7 +110,7 @@ export async function getStaticProps() {
         initialResults: [],
         generatedAt: new Date().toISOString()
       },
-      revalidate: 600
+      revalidate: 7200
     };
   }
 }
