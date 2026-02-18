@@ -63,10 +63,8 @@ const fallbackResults: LottoResult[] = [
 
 async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResult[]; diagnostics: ScrapeDiagnostics }> {
   try {
-    console.log('Starting to fetch lottery results from open data API...');
-    const sourceUrl =
-      process.env.LOTTERY_API_URL ||
-      'https://data.ny.gov/resource/d6yy-54nr.json?$order=draw_date%20DESC&$limit=10';
+    console.log('Starting to fetch lottery results from configured API URL...');
+    const sourceUrl = process.env.LOTTERY_API_URL;
     const diagnostics: ScrapeDiagnostics = {
       steps: [],
       counts: { cardsFound: 0, completeResults: 0 },
@@ -79,6 +77,12 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
     };
 
     addStep('start_fetch', true, 'Initiated API fetch');
+
+    if (!sourceUrl) {
+      addStep('no_api_url', false, 'LOTTERY_API_URL not configured');
+      diagnostics.usedFallback = true;
+      return { results: fallbackResults, diagnostics };
+    }
 
     const response = await axios.get(sourceUrl, {
       timeout: 15000
@@ -180,9 +184,7 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
     const diagnostics: ScrapeDiagnostics = {
       steps: [{ label: 'http_error', ok: false, details: String(error) }, { label: 'fallback_used', ok: true, details: 'Exception during scrape' }],
       counts: { cardsFound: 0, completeResults: 0 },
-      sourceUrl:
-        process.env.LOTTERY_API_URL ||
-        'https://data.ny.gov/resource/d6yy-54nr.json?$order=draw_date%20DESC&$limit=10',
+      sourceUrl: process.env.LOTTERY_API_URL || '',
       usedFallback: true,
       errors: [String(error)]
     };
