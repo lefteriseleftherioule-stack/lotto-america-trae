@@ -61,11 +61,15 @@ const fallbackResults: LottoResult[] = [
   }
 ];
 
+let lastDiagnostics: ScrapeDiagnostics | null = null;
+
 function parseIowaLottoAmericaHtml(
   html: string,
   addStep: (label: string, ok: boolean, details?: string) => void
 ): LottoResult | null {
   const text = String(html).replace(/\s+/g, ' ');
+  addStep('html_length', true, String(text.length));
+  addStep('html_sample', true, text.slice(0, 300));
 
   const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
   let date = 'Latest Lotto America draw';
@@ -162,12 +166,14 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
     if (!result) {
       diagnostics.usedFallback = true;
       addStep('fallback_used', true, 'Parsed 0 complete results from Iowa Lottery page');
+      lastDiagnostics = diagnostics;
       return { results: fallbackResults, diagnostics };
     }
 
     diagnostics.counts.cardsFound = 1;
     diagnostics.counts.completeResults = 1;
     addStep('success', true, '1 result parsed');
+    lastDiagnostics = diagnostics;
     return { results: [result], diagnostics };
   } catch (error) {
     console.error('Error fetching lottery results from Iowa Lottery page:', error);
@@ -179,6 +185,7 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
       usedFallback: true,
       errors: [String(error)]
     };
+    lastDiagnostics = diagnostics;
     return { results: fallbackResults, diagnostics };
   }
 }
@@ -218,14 +225,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log('Using cached lottery results');
         if (debugMode) {
           const ageMs = currentTime - lastFetchTime;
-          const diagnostics: ScrapeDiagnostics = {
-            steps: [
-              { label: 'cache_used', ok: true, details: `age ${ageMs}ms` }
-            ],
-            counts: { cardsFound: 0, completeResults: cachedResults.length },
-            sourceUrl: 'cache',
-            usedFallback: cachedResults[0]?.isLive === false
-          };
+          let diagnostics: ScrapeDiagnostics;
+          if (lastDiagnostics) {
+            diagnostics = {
+              ...lastDiagnostics,
+              steps: [
+                ...(lastDiagnostics.steps || []),
+                { label: 'cache_used', ok: true, details: `age ${ageMs}ms` }
+              ]
+            };
+          } else {
+            diagnostics = {
+              steps: [
+                { label: 'cache_used', ok: true, details: `age ${ageMs}ms` }
+              ],
+              counts: { cardsFound: cachedResults.length, completeResults: cachedResults.length },
+              sourceUrl: 'cache',
+              usedFallback: cachedResults[0]?.isLive === false
+            };
+          }
           res.status(200).json({ results: cachedResults, diagnostics, cache: { used: true, ageMs, lastFetchTime } });
         } else {
           res.status(200).json(cachedResults);
