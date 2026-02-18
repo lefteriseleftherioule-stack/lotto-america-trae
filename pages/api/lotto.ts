@@ -9,6 +9,7 @@ interface LottoResult {
   winners: number;
   jackpot: string;
   isLive?: boolean; // Flag to indicate if this is live scraped data or fallback
+  debugInfo?: string;
 }
 
 // Diagnostics types for debug checklist
@@ -167,7 +168,10 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
       diagnostics.usedFallback = true;
       addStep('fallback_used', true, 'Parsed 0 complete results from Iowa Lottery page');
       lastDiagnostics = diagnostics;
-      return { results: fallbackResults, diagnostics };
+      const enrichedFallback = fallbackResults.map((r, idx) =>
+        idx === 0 ? { ...r, debugInfo: JSON.stringify(diagnostics) } : r
+      );
+      return { results: enrichedFallback, diagnostics };
     }
 
     diagnostics.counts.cardsFound = 1;
@@ -186,7 +190,10 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
       errors: [String(error)]
     };
     lastDiagnostics = diagnostics;
-    return { results: fallbackResults, diagnostics };
+    const enrichedFallback = fallbackResults.map((r, idx) =>
+      idx === 0 ? { ...r, debugInfo: JSON.stringify(diagnostics) } : r
+    );
+    return { results: enrichedFallback, diagnostics };
   }
 }
 
