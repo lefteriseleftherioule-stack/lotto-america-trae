@@ -61,26 +61,8 @@ const fallbackResults: LottoResult[] = [
   }
 ];
 
-function getLatestDrawDateIso(): string {
-  const d = new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  d.setUTCDate(d.getUTCDate() - 1);
-  for (let i = 0; i < 14; i++) {
-    const day = d.getUTCDay();
-    if (day === 1 || day === 3 || day === 6) {
-      break;
-    }
-    d.setUTCDate(d.getUTCDate() - 1);
-  }
-  const year = d.getUTCFullYear();
-  const month = `${d.getUTCMonth() + 1}`.padStart(2, '0');
-  const dayNum = `${d.getUTCDate()}`.padStart(2, '0');
-  return `${year}-${month}-${dayNum}`;
-}
-
 function parseLottoAmericaHtml(
   html: string,
-  drawDateIso: string,
   addStep: (label: string, ok: boolean, details?: string) => void
 ): LottoResult | null {
   const text = String(html).replace(/\s+/g, ' ');
@@ -121,18 +103,15 @@ function parseLottoAmericaHtml(
     }
   }
 
-  const dateObj = new Date(drawDateIso);
+  const dateMatch = text.match(
+    /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})/
+  );
   const date =
-    !isNaN(dateObj.getTime())
-      ? dateObj.toLocaleDateString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        })
-      : drawDateIso;
+    dateMatch && dateMatch[0]
+      ? dateMatch[0]
+      : 'Latest Lotto America draw';
 
-  addStep('date_parsed', true, drawDateIso);
+  addStep('date_parsed', !!dateMatch, date);
   addStep('numbers_parsed', true, `${mainNumbers.join(' ')} | ${starBall}`);
   addStep('multiplier_parsed', true, String(allStarBonus));
 
@@ -149,9 +128,8 @@ function parseLottoAmericaHtml(
 
 async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResult[]; diagnostics: ScrapeDiagnostics }> {
   try {
-    console.log('Starting to fetch Lotto America results from lottoamerica.com...');
-    const drawDateIso = getLatestDrawDateIso();
-    const sourceUrl = `https://www.lottoamerica.com/numbers/${drawDateIso}`;
+    console.log('Starting to fetch Lotto America results from lottoamerica.com (latest page)...');
+    const sourceUrl = 'https://www.lottoamerica.com/';
     const diagnostics: ScrapeDiagnostics = {
       steps: [],
       counts: { cardsFound: 0, completeResults: 0 },
@@ -170,7 +148,7 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
     addStep('http_get', response.status === 200, `HTTP ${response.status}`);
     console.log('Fetched HTML successfully, parsing results...');
 
-    const result = parseLottoAmericaHtml(String(response.data), drawDateIso, addStep);
+    const result = parseLottoAmericaHtml(String(response.data), addStep);
     if (!result) {
       diagnostics.usedFallback = true;
       addStep('fallback_used', true, 'Parsed 0 complete results from lottoamerica.com');
@@ -187,7 +165,7 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
     const diagnostics: ScrapeDiagnostics = {
       steps: [{ label: 'http_error', ok: false, details: String(error) }, { label: 'fallback_used', ok: true, details: 'Exception during scrape' }],
       counts: { cardsFound: 0, completeResults: 0 },
-      sourceUrl: 'https://www.lottoamerica.com/numbers',
+      sourceUrl: 'https://www.lottoamerica.com/',
       usedFallback: true,
       errors: [String(error)]
     };
