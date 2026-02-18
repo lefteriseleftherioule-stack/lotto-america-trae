@@ -61,10 +61,97 @@ const fallbackResults: LottoResult[] = [
   }
 ];
 
+function getLatestDrawDateIso(): string {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - 1);
+  for (let i = 0; i < 14; i++) {
+    const day = d.getUTCDay();
+    if (day === 1 || day === 3 || day === 6) {
+      break;
+    }
+    d.setUTCDate(d.getUTCDate() - 1);
+  }
+  const year = d.getUTCFullYear();
+  const month = `${d.getUTCMonth() + 1}`.padStart(2, '0');
+  const dayNum = `${d.getUTCDate()}`.padStart(2, '0');
+  return `${year}-${month}-${dayNum}`;
+}
+
+function parseLottoAmericaHtml(
+  html: string,
+  drawDateIso: string,
+  addStep: (label: string, ok: boolean, details?: string) => void
+): LottoResult | null {
+  const text = String(html).replace(/\s+/g, ' ');
+  const pattern = /\b(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\b/g;
+  let match: RegExpExecArray | null;
+  const candidates: number[][] = [];
+  while ((match = pattern.exec(text)) !== null) {
+    const nums = match
+      .slice(1)
+      .map((v) => parseInt(v, 10))
+      .filter((n) => !isNaN(n));
+    if (nums.length === 6) {
+      const main = nums.slice(0, 5);
+      const star = nums[5];
+      const mainOk = main.every((n) => n >= 1 && n <= 52);
+      const starOk = star >= 1 && star <= 10;
+      if (mainOk && starOk) {
+        candidates.push(nums);
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    addStep('numbers_parsed', false, 'no candidate sequences found');
+    return null;
+  }
+
+  const selected = candidates[0];
+  const mainNumbers = selected.slice(0, 5);
+  const starBall = selected[5];
+
+  let allStarBonus = 1;
+  const bonusMatch = text.match(/All\s*Star\s*Bonus[^0-9]*([2-5])/i);
+  if (bonusMatch) {
+    const m = parseInt(bonusMatch[1], 10);
+    if (!isNaN(m) && m >= 1) {
+      allStarBonus = m;
+    }
+  }
+
+  const dateObj = new Date(drawDateIso);
+  const date =
+    !isNaN(dateObj.getTime())
+      ? dateObj.toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        })
+      : drawDateIso;
+
+  addStep('date_parsed', true, drawDateIso);
+  addStep('numbers_parsed', true, `${mainNumbers.join(' ')} | ${starBall}`);
+  addStep('multiplier_parsed', true, String(allStarBonus));
+
+  return {
+    date,
+    numbers: mainNumbers,
+    starBall,
+    allStarBonus,
+    winners: 0,
+    jackpot: 'Not available',
+    isLive: true
+  };
+}
+
 async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResult[]; diagnostics: ScrapeDiagnostics }> {
   try {
-    console.log('Starting to fetch lottery results from configured API URL...');
-    const sourceUrl = process.env.LOTTERY_API_URL;
+    console.log('Starting to fetch Lotto America results from lottoamerica.com...');
+    const drawDateIso = getLatestDrawDateIso();
+    const sourceUrl = `https://www.lottoamerica.com/numbers/${drawDateIso}`;
     const diagnostics: ScrapeDiagnostics = {
       steps: [],
       counts: { cardsFound: 0, completeResults: 0 },
@@ -76,115 +163,31 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
       diagnostics.steps.push({ label, ok, details });
     };
 
-    addStep('start_fetch', true, 'Initiated API fetch');
-
-    if (!sourceUrl) {
-      addStep('no_api_url', false, 'LOTTERY_API_URL not configured');
-      diagnostics.usedFallback = true;
-      return { results: fallbackResults, diagnostics };
-    }
-
     const response = await axios.get(sourceUrl, {
       timeout: 15000
     });
     diagnostics.httpStatus = response.status;
     addStep('http_get', response.status === 200, `HTTP ${response.status}`);
-    console.log('Fetched JSON successfully, parsing results...');
+    console.log('Fetched HTML successfully, parsing results...');
 
-    const items: any[] = Array.isArray(response.data) ? response.data : [];
-    diagnostics.counts.cardsFound = items.length;
-    addStep('records_found', items.length > 0, `${items.length} records found`);
-
-    if (items.length === 0) {
+    const result = parseLottoAmericaHtml(String(response.data), drawDateIso, addStep);
+    if (!result) {
       diagnostics.usedFallback = true;
-      addStep('fallback_used', true, 'API returned no records');
+      addStep('fallback_used', true, 'Parsed 0 complete results from lottoamerica.com');
       return { results: fallbackResults, diagnostics };
     }
 
-    items.sort((a, b) => {
-      const da = a.draw_date ? new Date(a.draw_date).getTime() : 0;
-      const db = b.draw_date ? new Date(b.draw_date).getTime() : 0;
-      return db - da;
-    });
-
-    const results: LottoResult[] = [];
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i] || {};
-
-      const rawDate: string = item.draw_date || '';
-      const dateObj = rawDate ? new Date(rawDate) : null;
-      const date =
-        dateObj && !isNaN(dateObj.getTime())
-          ? dateObj.toLocaleDateString('en-US', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })
-          : rawDate || 'Unknown date';
-      addStep('date_parsed', !!rawDate, rawDate || 'missing');
-
-      const numbersText: string = item.winning_numbers || '';
-      const parts = numbersText.split(' ').filter(Boolean);
-      const mainNumbers: number[] = [];
-      let starBall = 0;
-
-      if (parts.length >= 6) {
-        for (let j = 0; j < 5; j++) {
-          const n = parseInt(parts[j], 10);
-          if (!isNaN(n)) {
-            mainNumbers.push(n);
-          }
-        }
-        const star = parseInt(parts[5], 10);
-        if (!isNaN(star)) {
-          starBall = star;
-        }
-      }
-
-      addStep('numbers_parsed', mainNumbers.length === 5 && starBall > 0, numbersText);
-
-      const multiplierRaw: string = item.multiplier || '';
-      const allStarBonus = multiplierRaw ? parseInt(multiplierRaw, 10) || 1 : 1;
-      addStep('multiplier_parsed', allStarBonus >= 1, multiplierRaw || '1');
-
-      const jackpot = 'Not available';
-      const winners = 0;
-
-      if (date && mainNumbers.length === 5 && starBall > 0) {
-        results.push({
-          date,
-          numbers: mainNumbers,
-          starBall,
-          allStarBonus,
-          winners,
-          jackpot,
-          isLive: true
-        });
-        diagnostics.counts.completeResults += 1;
-        addStep('result_pushed', true, `index ${i}`);
-      } else {
-        addStep('result_skipped', false, `index ${i}`);
-      }
-    }
-
-    if (results.length === 0) {
-      diagnostics.usedFallback = true;
-      addStep('fallback_used', true, 'Parsed 0 complete results from API');
-      return { results: fallbackResults, diagnostics };
-    }
-
-    console.log(`Successfully parsed ${results.length} results from API`);
-    addStep('success', true, `${results.length} results parsed`);
-    return { results, diagnostics };
+    diagnostics.counts.cardsFound = 1;
+    diagnostics.counts.completeResults = 1;
+    addStep('success', true, '1 result parsed');
+    return { results: [result], diagnostics };
   } catch (error) {
-    console.error('Error fetching lottery results from API:', error);
+    console.error('Error fetching lottery results from lottoamerica.com:', error);
     console.log('Falling back to sample data due to error');
     const diagnostics: ScrapeDiagnostics = {
       steps: [{ label: 'http_error', ok: false, details: String(error) }, { label: 'fallback_used', ok: true, details: 'Exception during scrape' }],
       counts: { cardsFound: 0, completeResults: 0 },
-      sourceUrl: process.env.LOTTERY_API_URL || '',
+      sourceUrl: 'https://www.lottoamerica.com/numbers',
       usedFallback: true,
       errors: [String(error)]
     };
