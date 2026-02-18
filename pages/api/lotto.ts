@@ -61,58 +61,68 @@ const fallbackResults: LottoResult[] = [
   }
 ];
 
-function parseLottoAmericaHtml(
+function parseIowaLottoAmericaHtml(
   html: string,
   addStep: (label: string, ok: boolean, details?: string) => void
 ): LottoResult | null {
   const text = String(html).replace(/\s+/g, ' ');
-  const pattern = /\b(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\b/g;
-  let match: RegExpExecArray | null;
-  const candidates: number[][] = [];
-  while ((match = pattern.exec(text)) !== null) {
-    const nums = match
-      .slice(1)
-      .map((v) => parseInt(v, 10))
-      .filter((n) => !isNaN(n));
-    if (nums.length === 6) {
-      const main = nums.slice(0, 5);
-      const star = nums[5];
-      const mainOk = main.every((n) => n >= 1 && n <= 52);
-      const starOk = star >= 1 && star <= 10;
-      if (mainOk && starOk) {
-        candidates.push(nums);
+
+  const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+  let date = 'Latest Lotto America draw';
+  if (dateMatch && dateMatch[1]) {
+    const [mm, dd, yyyy] = dateMatch[1].split('/');
+    const year = parseInt(yyyy, 10);
+    const month = parseInt(mm, 10);
+    const day = parseInt(dd, 10);
+    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+      const d = new Date(year, month - 1, day);
+      if (!isNaN(d.getTime())) {
+        date = d.toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
       }
     }
   }
+  addStep('date_parsed', !!dateMatch, dateMatch ? dateMatch[1] : 'no mm/dd/yyyy found');
 
-  if (candidates.length === 0) {
-    addStep('numbers_parsed', false, 'no candidate sequences found');
+  const numbersMatch = text.match(
+    /(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})/
+  );
+  if (!numbersMatch) {
+    addStep('numbers_parsed', false, 'no 6-number pattern found');
     return null;
   }
 
-  const selected = candidates[0];
-  const mainNumbers = selected.slice(0, 5);
-  const starBall = selected[5];
+  const allNums = numbersMatch
+    .slice(1)
+    .map((v) => parseInt(v, 10))
+    .filter((n) => !isNaN(n));
+  if (allNums.length !== 6) {
+    addStep('numbers_parsed', false, 'parsed numbers length != 6');
+    return null;
+  }
+
+  const mainNumbers = allNums.slice(0, 5);
+  const starBall = allNums[5];
+  const mainOk = mainNumbers.every((n) => n >= 1 && n <= 52);
+  const starOk = starBall >= 1 && starBall <= 10;
+  if (!mainOk || !starOk) {
+    addStep('numbers_parsed', false, `invalid ranges: main ${mainNumbers.join(',')} star ${starBall}`);
+    return null;
+  }
+  addStep('numbers_parsed', true, `${mainNumbers.join(' ')} | ${starBall}`);
 
   let allStarBonus = 1;
-  const bonusMatch = text.match(/All\s*Star\s*Bonus[^0-9]*([2-5])/i);
-  if (bonusMatch) {
+  const bonusMatch = text.match(/All\s*Star\s*Bonus[^0-9]*([0-9]+)/i);
+  if (bonusMatch && bonusMatch[1]) {
     const m = parseInt(bonusMatch[1], 10);
     if (!isNaN(m) && m >= 1) {
       allStarBonus = m;
     }
   }
-
-  const dateMatch = text.match(
-    /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})/
-  );
-  const date =
-    dateMatch && dateMatch[0]
-      ? dateMatch[0]
-      : 'Latest Lotto America draw';
-
-  addStep('date_parsed', !!dateMatch, date);
-  addStep('numbers_parsed', true, `${mainNumbers.join(' ')} | ${starBall}`);
   addStep('multiplier_parsed', true, String(allStarBonus));
 
   return {
@@ -128,8 +138,8 @@ function parseLottoAmericaHtml(
 
 async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResult[]; diagnostics: ScrapeDiagnostics }> {
   try {
-    console.log('Starting to fetch Lotto America results from lottoamerica.com (latest page)...');
-    const sourceUrl = 'https://www.lottoamerica.com/';
+    console.log('Starting to fetch Lotto America results from Iowa Lottery page...');
+    const sourceUrl = 'https://ialottery.com/Pages/Games-Online/LottoAmericaWin.aspx';
     const diagnostics: ScrapeDiagnostics = {
       steps: [],
       counts: { cardsFound: 0, completeResults: 0 },
@@ -148,10 +158,10 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
     addStep('http_get', response.status === 200, `HTTP ${response.status}`);
     console.log('Fetched HTML successfully, parsing results...');
 
-    const result = parseLottoAmericaHtml(String(response.data), addStep);
+    const result = parseIowaLottoAmericaHtml(String(response.data), addStep);
     if (!result) {
       diagnostics.usedFallback = true;
-      addStep('fallback_used', true, 'Parsed 0 complete results from lottoamerica.com');
+      addStep('fallback_used', true, 'Parsed 0 complete results from Iowa Lottery page');
       return { results: fallbackResults, diagnostics };
     }
 
@@ -160,12 +170,12 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
     addStep('success', true, '1 result parsed');
     return { results: [result], diagnostics };
   } catch (error) {
-    console.error('Error fetching lottery results from lottoamerica.com:', error);
+    console.error('Error fetching lottery results from Iowa Lottery page:', error);
     console.log('Falling back to sample data due to error');
     const diagnostics: ScrapeDiagnostics = {
       steps: [{ label: 'http_error', ok: false, details: String(error) }, { label: 'fallback_used', ok: true, details: 'Exception during scrape' }],
       counts: { cardsFound: 0, completeResults: 0 },
-      sourceUrl: 'https://www.lottoamerica.com/',
+      sourceUrl: 'https://ialottery.com/Pages/Games-Online/LottoAmericaWin.aspx',
       usedFallback: true,
       errors: [String(error)]
     };
