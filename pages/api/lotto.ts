@@ -279,10 +279,14 @@ function parseIowaLottoAmericaTable(
   const plainRegion = region.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   addStep('table_region_plain_sample', true, plainRegion.slice(0, 300));
 
-  const rowRegex =
-    /(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s+(\d+)/g;
+  const headerIdx = plainRegion.indexOf('Date Numbers');
+  const tableText = headerIdx !== -1 ? plainRegion.slice(headerIdx) : plainRegion;
+  addStep('table_region_plain_header_sample', true, tableText.slice(0, 300));
 
-  const matches = Array.from(plainRegion.matchAll(rowRegex));
+  const rowRegex =
+    /(\d{1,2}\/\d{1,2}\/\d{4})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d+)/g;
+
+  const matches = Array.from(tableText.matchAll(rowRegex));
   if (matches.length === 0) {
     addStep('table_rows_found', false, 'no matching rows in table region');
     return [];
