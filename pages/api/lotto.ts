@@ -74,8 +74,8 @@ function parseIowaLottoAmericaHtml(
   addStep('html_sample', true, text.slice(0, 300));
 
   // Try to parse everything from the "Winning Numbers" block first
-  const winningBlock = text.match(
-    /Winning Numbers\s*Drawing Date:\s*([0-9]{1,2})\/([0-9]{1,2}):\s*((?:\d{1,2}\s+){5}\d{1,2})\s*All Star Bonus:\s*([0-9]+)/
+  const winningBlock = raw.match(
+    /Winning Numbers[\s\S]*?Drawing Date:\s*([0-9]{1,2})\/([0-9]{1,2}):[\s\S]*?(\d{1,2})[^0-9]+(\d{1,2})[^0-9]+(\d{1,2})[^0-9]+(\d{1,2})[^0-9]+(\d{1,2})[^0-9]+(\d{1,2})[\s\S]*?All Star Bonus:\s*([0-9]+)/
   );
 
   let date = 'Latest Lotto America draw';
@@ -86,8 +86,8 @@ function parseIowaLottoAmericaHtml(
   if (winningBlock) {
     const month = parseInt(winningBlock[1], 10);
     const day = parseInt(winningBlock[2], 10);
-    const numbersText = winningBlock[3];
-    const bonusRaw = winningBlock[4];
+    const capturedNums = winningBlock.slice(3, 9);
+    const bonusRaw = winningBlock[9];
 
     const now = new Date();
     const year = now.getFullYear();
@@ -102,9 +102,7 @@ function parseIowaLottoAmericaHtml(
     }
     addStep('date_parsed', true, `Drawing Date: ${month}/${day}`);
 
-    const nums = numbersText
-      .trim()
-      .split(/\s+/)
+    const nums = capturedNums
       .map((v) => parseInt(v, 10))
       .filter((n) => !isNaN(n));
     if (nums.length === 6) {
@@ -112,6 +110,7 @@ function parseIowaLottoAmericaHtml(
       starBall = nums[5];
     }
 
+    const numbersText = nums.join(' ');
     addStep('numbers_block_raw', true, numbersText);
 
     const mainOk = mainNumbers.length === 5 && mainNumbers.every((n) => n >= 1 && n <= 52);
