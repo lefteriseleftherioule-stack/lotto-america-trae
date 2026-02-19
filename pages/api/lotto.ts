@@ -68,34 +68,62 @@ function parseIowaLottoAmericaHtml(
   html: string,
   addStep: (label: string, ok: boolean, details?: string) => void
 ): LottoResult | null {
-  const text = String(html).replace(/\s+/g, ' ');
+  const raw = String(html);
+  const text = raw.replace(/\s+/g, ' ');
   addStep('html_length', true, String(text.length));
   addStep('html_sample', true, text.slice(0, 300));
 
-  const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
   let date = 'Latest Lotto America draw';
-  if (dateMatch && dateMatch[1]) {
-    const [mm, dd, yyyy] = dateMatch[1].split('/');
-    const year = parseInt(yyyy, 10);
-    const month = parseInt(mm, 10);
-    const day = parseInt(dd, 10);
-    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-      const d = new Date(year, month - 1, day);
-      if (!isNaN(d.getTime())) {
-        date = d.toLocaleDateString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        });
+  let dateMatch: RegExpMatchArray | null = null;
+
+  const drawingBlockMatch = text.match(/Drawing Date:\s*([0-9]{1,2})\/([0-9]{1,2}):/);
+  if (drawingBlockMatch) {
+    const month = parseInt(drawingBlockMatch[1], 10);
+    const day = parseInt(drawingBlockMatch[2], 10);
+    const now = new Date();
+    const year = now.getFullYear();
+    const d = new Date(year, month - 1, day);
+    if (!isNaN(d.getTime())) {
+      date = d.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    }
+    dateMatch = drawingBlockMatch;
+  } else {
+    dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+    if (dateMatch && dateMatch[1]) {
+      const [mm, dd, yyyy] = dateMatch[1].split('/');
+      const year = parseInt(yyyy, 10);
+      const month = parseInt(mm, 10);
+      const day = parseInt(dd, 10);
+      if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+        const d = new Date(year, month - 1, day);
+        if (!isNaN(d.getTime())) {
+          date = d.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          });
+        }
       }
     }
   }
-  addStep('date_parsed', !!dateMatch, dateMatch ? dateMatch[1] : 'no mm/dd/yyyy found');
+  addStep('date_parsed', !!dateMatch, dateMatch ? dateMatch[0] : 'no date found');
 
-  const numbersMatch = text.match(
-    /(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})/
-  );
+  let searchRegion = text;
+  const winningIdx = text.indexOf('Winning Numbers');
+  if (winningIdx !== -1) {
+    searchRegion = text.slice(winningIdx, winningIdx + 600);
+  }
+
+  const numbersMatch =
+    searchRegion.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})/) ||
+    text.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})/);
+  let date = 'Latest Lotto America draw';
   if (!numbersMatch) {
     addStep('numbers_parsed', false, 'no 6-number pattern found');
     return null;
