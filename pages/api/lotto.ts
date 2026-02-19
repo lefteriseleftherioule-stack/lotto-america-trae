@@ -73,65 +73,81 @@ function parseIowaLottoAmericaHtml(
   addStep('html_length', true, String(text.length));
   addStep('html_sample', true, text.slice(0, 300));
 
-  // Try to parse everything from the "Winning Numbers" block first
-  const winningBlock = raw.match(
-    /Winning Numbers[\s\S]*?Drawing Date:\s*([0-9]{1,2})\/([0-9]{1,2}):[\s\S]*?(\d{1,2})[^0-9]+(\d{1,2})[^0-9]+(\d{1,2})[^0-9]+(\d{1,2})[^0-9]+(\d{1,2})[^0-9]+(\d{1,2})[\s\S]*?All Star Bonus:\s*([0-9]+)/
-  );
-
   let date = 'Latest Lotto America draw';
   let mainNumbers: number[] = [];
   let starBall = 0;
   let allStarBonus = 1;
 
-  if (winningBlock) {
-    const month = parseInt(winningBlock[1], 10);
-    const day = parseInt(winningBlock[2], 10);
-    const capturedNums = winningBlock.slice(3, 9);
-    const bonusRaw = winningBlock[9];
+  // Primary strategy: work between "Drawing Date" and "All Star Bonus"
+  const idxWinning = raw.indexOf('Winning Numbers');
+  const idxDrawing = idxWinning !== -1 ? raw.indexOf('Drawing Date:', idxWinning) : -1;
+  const idxBonus = idxDrawing !== -1 ? raw.indexOf('All Star Bonus', idxDrawing) : -1;
 
-    const now = new Date();
-    const year = now.getFullYear();
-    const d = new Date(year, month - 1, day);
-    if (!isNaN(d.getTime())) {
-      date = d.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
+  if (idxDrawing !== -1 && idxBonus !== -1) {
+    const between = raw.slice(idxDrawing, idxBonus);
+    addStep('between_block_sample', true, between.slice(0, 200));
+
+    const numMatches = Array.from(between.matchAll(/(\d{1,2})/g)).map((m) => parseInt(m[1], 10));
+    addStep('between_block_numbers_count', true, String(numMatches.length));
+
+    if (numMatches.length >= 8) {
+      const month = numMatches[0];
+      const day = numMatches[1];
+      const balls = numMatches.slice(2, 8);
+
+      const now = new Date();
+      const year = now.getFullYear();
+      const d = new Date(year, month - 1, day);
+      if (!isNaN(d.getTime())) {
+        date = d.toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        });
+      }
+      addStep('date_parsed', true, `Drawing Date: ${month}/${day}`);
+
+      mainNumbers = balls.slice(0, 5);
+      starBall = balls[5];
+
+      const numbersText = balls.join(' ');
+      addStep('numbers_block_raw', true, numbersText);
+
+      const mainOk = mainNumbers.length === 5 && mainNumbers.every((n) => n >= 1 && n <= 52);
+      const starOk = starBall >= 1 && starBall <= 10;
+      if (!mainOk || !starOk) {
+        addStep(
+          'numbers_parsed',
+          false,
+          `invalid primary: main=${mainNumbers.join(',')} star=${starBall}`
+        );
+        mainNumbers = [];
+        starBall = 0;
+      } else {
+        addStep('numbers_parsed', true, `${mainNumbers.join(' ')} | ${starBall}`);
+      }
+    } else {
+      addStep('numbers_parsed', false, 'not enough numbers in primary block');
     }
-    addStep('date_parsed', true, `Drawing Date: ${month}/${day}`);
 
-    const nums = capturedNums
-      .map((v) => parseInt(v, 10))
-      .filter((n) => !isNaN(n));
-    if (nums.length === 6) {
-      mainNumbers = nums.slice(0, 5);
-      starBall = nums[5];
-    }
-
-    const numbersText = nums.join(' ');
-    addStep('numbers_block_raw', true, numbersText);
-
-    const mainOk = mainNumbers.length === 5 && mainNumbers.every((n) => n >= 1 && n <= 52);
-    const starOk = starBall >= 1 && starBall <= 10;
-    if (!mainOk || !starOk) {
-      addStep(
-        'numbers_parsed',
-        false,
-        `invalid: main=${mainNumbers.join(',')} star=${starBall}`
-      );
-      return null;
-    }
-    addStep('numbers_parsed', true, `${mainNumbers.join(' ')} | ${starBall}`);
-
-    const bonus = parseInt(bonusRaw, 10);
-    if (!isNaN(bonus) && bonus >= 1) {
-      allStarBonus = bonus;
+    const bonusMatchPrimary = text.match(/All\s*Star\s*Bonus[^0-9]*([0-9]+)/i);
+    if (bonusMatchPrimary && bonusMatchPrimary[1]) {
+      const b = parseInt(bonusMatchPrimary[1], 10);
+      if (!isNaN(b) && b >= 1) {
+        allStarBonus = b;
+      }
     }
     addStep('multiplier_parsed', true, String(allStarBonus));
   } else {
-    // Fallback: older generic parsing
+    addStep(
+      'primary_block_missing',
+      false,
+      `idxWinning=${idxWinning}, idxDrawing=${idxDrawing}, idxBonus=${idxBonus}`
+    );
+  }
+
+  if (mainNumbers.length === 0 || starBall === 0) {
     let dateMatch: RegExpMatchArray | null = null;
 
     const drawingBlockMatch = text.match(/Drawing Date:\s*([0-9]{1,2})\/([0-9]{1,2}):/);
