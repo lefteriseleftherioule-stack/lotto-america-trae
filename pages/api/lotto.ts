@@ -105,27 +105,22 @@ function parseIowaLottoAmericaHtml(
       addStep('date_parsed', true, `Drawing Date: ${month}/${day}`);
     }
 
-    const spanNumberRegex = /<span[^>]*class="number"[^>]*>\s*([0-9]{1,2})\s*<\/span>/gi;
-    const balls: number[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = spanNumberRegex.exec(between)) !== null) {
-      const v = parseInt(m[1], 10);
-      if (!isNaN(v)) {
-        balls.push(v);
-      }
-    }
+    const withoutAttrs = between.replace(/"[^"]*"/g, '');
+    const allNums = Array.from(withoutAttrs.matchAll(/(\d{1,2})/g))
+      .map((mm) => parseInt(mm[1], 10))
+      .filter((n) => !isNaN(n));
 
-    addStep('between_block_numbers_count', true, String(balls.length));
+    addStep('between_block_numbers_count', true, String(allNums.length));
 
-    if (balls.length >= 5) {
+    if (allNums.length >= 8) {
+      const balls = allNums.slice(2, 8);
+      const bonusCandidate = allNums[8] ?? null;
+
       mainNumbers = balls.slice(0, 5);
-    }
+      starBall = balls[5];
 
-    const starMatch = between.match(/id="[^"]*LAS[^"]*"[^>]*>\s*([0-9]{1,2})\s*<\/span>/i);
-    if (starMatch && starMatch[1]) {
-      const s = parseInt(starMatch[1], 10);
-      if (!isNaN(s)) {
-        starBall = s;
+      if (bonusCandidate !== null && !isNaN(bonusCandidate) && bonusCandidate >= 1) {
+        allStarBonus = bonusCandidate;
       }
     }
 
