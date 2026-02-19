@@ -87,14 +87,10 @@ function parseIowaLottoAmericaHtml(
     const between = raw.slice(idxDrawing, idxBonus);
     addStep('between_block_sample', true, between.slice(0, 200));
 
-    const numMatches = Array.from(between.matchAll(/(\d{1,2})/g)).map((m) => parseInt(m[1], 10));
-    addStep('between_block_numbers_count', true, String(numMatches.length));
-
-    if (numMatches.length >= 8) {
-      const month = numMatches[0];
-      const day = numMatches[1];
-      const balls = numMatches.slice(2, 8);
-
+    const dateMatchPrimary = between.match(/Drawing Date:[^0-9]*([0-9]{1,2})\/([0-9]{1,2})/);
+    if (dateMatchPrimary) {
+      const month = parseInt(dateMatchPrimary[1], 10);
+      const day = parseInt(dateMatchPrimary[2], 10);
       const now = new Date();
       const year = now.getFullYear();
       const d = new Date(year, month - 1, day);
@@ -107,11 +103,25 @@ function parseIowaLottoAmericaHtml(
         });
       }
       addStep('date_parsed', true, `Drawing Date: ${month}/${day}`);
+    }
 
+    const spanNumberRegex = /<span[^>]*class="number"[^>]*>\s*([0-9]{1,2})\s*<\/span>/gi;
+    const balls: number[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = spanNumberRegex.exec(between)) !== null) {
+      const v = parseInt(m[1], 10);
+      if (!isNaN(v)) {
+        balls.push(v);
+      }
+    }
+
+    addStep('between_block_numbers_count', true, String(balls.length));
+
+    if (balls.length >= 6) {
       mainNumbers = balls.slice(0, 5);
       starBall = balls[5];
 
-      const numbersText = balls.join(' ');
+      const numbersText = balls.slice(0, 6).join(' ');
       addStep('numbers_block_raw', true, numbersText);
 
       const mainOk = mainNumbers.length === 5 && mainNumbers.every((n) => n >= 1 && n <= 52);
