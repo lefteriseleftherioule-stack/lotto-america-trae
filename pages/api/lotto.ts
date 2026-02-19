@@ -276,10 +276,13 @@ function parseIowaLottoAmericaTable(
   const region = startIdx !== -1 ? text.slice(startIdx) : text;
   addStep('table_region_sample', true, region.slice(0, 300));
 
+  const plainRegion = region.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  addStep('table_region_plain_sample', true, plainRegion.slice(0, 300));
+
   const rowRegex =
     /(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s+(\d+)/g;
 
-  const matches = Array.from(region.matchAll(rowRegex));
+  const matches = Array.from(plainRegion.matchAll(rowRegex));
   if (matches.length === 0) {
     addStep('table_rows_found', false, 'no matching rows in table region');
     return [];
@@ -431,8 +434,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const currentTime = Date.now();
       const debugMode = String(req.query.debug).toLowerCase() === '1' || String(req.query.debug).toLowerCase() === 'true';
       
-      // Use cached results if they exist and are still fresh
-      if (cachedResults.length > 0 && currentTime - lastFetchTime < CACHE_DURATION) {
+      // Use cached results if they exist and are still fresh (but bypass cache in debug mode)
+      if (!debugMode && cachedResults.length > 0 && currentTime - lastFetchTime < CACHE_DURATION) {
         console.log('Using cached lottery results');
         if (debugMode) {
           const ageMs = currentTime - lastFetchTime;
