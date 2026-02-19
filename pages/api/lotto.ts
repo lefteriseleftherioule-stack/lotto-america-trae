@@ -81,8 +81,8 @@ function parseIowaLottoAmericaHtml(
   // Primary strategy: parse first row of the "previous month of drawings" table
   addStep('table_region_sample', true, text.slice(0, 300));
 
-  const rowMatch = text.match(
-    /(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s+(\d+)/
+  const rowMatch = raw.match(
+    /(\d{1,2}\/\d{1,2}\/\d{4})[\s\S]*?(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})[\s\S]*?(\d+)/
   );
 
   if (rowMatch) {
