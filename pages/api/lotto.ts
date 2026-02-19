@@ -266,6 +266,78 @@ function parseIowaLottoAmericaHtml(
   };
 }
 
+function parseIowaLottoAmericaTable(
+  html: string,
+  addStep: (label: string, ok: boolean, details?: string) => void
+): LottoResult[] {
+  const raw = String(html);
+  const text = raw.replace(/\s+/g, ' ');
+  const startIdx = text.indexOf('This table shows the previous month of drawings');
+  const region = startIdx !== -1 ? text.slice(startIdx) : text;
+  addStep('table_region_sample', true, region.slice(0, 300));
+
+  const rowRegex =
+    /(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s+(\d+)/g;
+
+  const matches = Array.from(region.matchAll(rowRegex));
+  if (matches.length === 0) {
+    addStep('table_rows_found', false, 'no matching rows in table region');
+    return [];
+  }
+
+  addStep('table_rows_found', true, `rows=${matches.length}`);
+
+  const results: LottoResult[] = [];
+
+  for (const m of matches) {
+    if (results.length >= 12) break;
+
+    const dateStr = m[1];
+    const [mm, dd, yyyy] = dateStr.split('/');
+    const year = parseInt(yyyy, 10);
+    const month = parseInt(mm, 10);
+    const day = parseInt(dd, 10);
+    const d = new Date(year, month - 1, day);
+    if (isNaN(d.getTime())) continue;
+
+    const nums = m
+      .slice(2, 8)
+      .map((v) => parseInt(v, 10))
+      .filter((n) => !isNaN(n));
+    if (nums.length !== 6) continue;
+
+    const mainNumbers = nums.slice(0, 5);
+    const starBall = nums[5];
+    const mainOk = mainNumbers.length === 5 && mainNumbers.every((n) => n >= 1 && n <= 52);
+    const starOk = starBall >= 1 && starBall <= 10;
+    if (!mainOk || !starOk) continue;
+
+    const bonusRaw = m[8];
+    const bonus = parseInt(bonusRaw, 10);
+    const allStarBonus = !isNaN(bonus) && bonus >= 1 ? bonus : 1;
+
+    const prettyDate = d.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    results.push({
+      date: prettyDate,
+      numbers: mainNumbers,
+      starBall,
+      allStarBonus,
+      winners: 0,
+      jackpot: 'Not available',
+      isLive: true
+    });
+  }
+
+  addStep('table_rows_parsed', results.length > 0, `parsed=${results.length}`);
+  return results;
+}
+
 async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResult[]; diagnostics: ScrapeDiagnostics }> {
   try {
     console.log('Starting to fetch Lotto America results from Iowa Lottery page...');
@@ -288,8 +360,15 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
     addStep('http_get', response.status === 200, `HTTP ${response.status}`);
     console.log('Fetched HTML successfully, parsing results...');
 
-    const result = parseIowaLottoAmericaHtml(String(response.data), addStep);
-    if (!result) {
+    const parsedFromTable = parseIowaLottoAmericaTable(String(response.data), addStep);
+    let results: LottoResult[] = parsedFromTable;
+
+    if (!results || results.length === 0) {
+      const latestOnly = parseIowaLottoAmericaHtml(String(response.data), addStep);
+      results = latestOnly ? [latestOnly] : [];
+    }
+
+    if (!results || results.length === 0) {
       diagnostics.usedFallback = true;
       addStep('fallback_used', true, 'Parsed 0 complete results from Iowa Lottery page');
       lastDiagnostics = diagnostics;
@@ -299,11 +378,11 @@ async function scrapeLottoResultsWithDiagnostics(): Promise<{ results: LottoResu
       return { results: enrichedFallback, diagnostics };
     }
 
-    diagnostics.counts.cardsFound = 1;
-    diagnostics.counts.completeResults = 1;
-    addStep('success', true, '1 result parsed');
+    diagnostics.counts.cardsFound = results.length;
+    diagnostics.counts.completeResults = results.length;
+    addStep('success', true, `${results.length} result(s) parsed`);
     lastDiagnostics = diagnostics;
-    return { results: [result], diagnostics };
+    return { results, diagnostics };
   } catch (error) {
     console.error('Error fetching lottery results from Iowa Lottery page:', error);
     console.log('Falling back to sample data due to error');
