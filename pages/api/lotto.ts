@@ -123,7 +123,6 @@ function parseIowaLottoAmericaHtml(
   const numbersMatch =
     searchRegion.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})/) ||
     text.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})\s+(\d{1,2})/);
-  let date = 'Latest Lotto America draw';
   if (!numbersMatch) {
     addStep('numbers_parsed', false, 'no 6-number pattern found');
     return null;
