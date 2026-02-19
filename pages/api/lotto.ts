@@ -79,14 +79,9 @@ function parseIowaLottoAmericaHtml(
   let allStarBonus = 1;
 
   // Primary strategy: parse first row of the "previous month of drawings" table
-  const tableIdx = text.indexOf('This table shows the previous month of drawings');
-  let region = text;
-  if (tableIdx !== -1) {
-    region = text.slice(tableIdx, tableIdx + 2000);
-  }
-  addStep('table_region_sample', true, region.slice(0, 300));
+  addStep('table_region_sample', true, text.slice(0, 300));
 
-  const rowMatch = region.match(
+  const rowMatch = text.match(
     /(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})\s+(\d+)/
   );
 
